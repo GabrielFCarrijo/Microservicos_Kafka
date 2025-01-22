@@ -2,6 +2,7 @@ package br.com.microservices.orchestrated.productvalidationservice.config.kafka;
 
 
 import lombok.RequiredArgsConstructor;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
+import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.core.*;
 
 import java.util.HashMap;
@@ -32,11 +34,14 @@ public class KafkaConfig {
     @Value("${spring.kafka.consumer.auto-offset-reset}")
     private String autoOffsetReset;
 
-    @Value("${spring.kafka.topic.start-saga}")
-    private String startSagaTopic;
+    @Value("${spring.kafka.topic.orchestrator}")
+    private String orchestratorTopic;
 
-    @Value("${spring.kafka.topic.notify-ending}")
-    private String notifyEndingTopic;
+    @Value("${spring.kafka.topic.product-validation-success}")
+    private String productValidationSuccessTopic;
+
+    @Value("${spring.kafka.topic.product-validation-fail}")
+    private String productValidationFailTopic;
 
     @Bean
     public ConsumerFactory<String, String> consumerFactory() {
@@ -69,5 +74,27 @@ public class KafkaConfig {
     @Bean
     public KafkaTemplate<String, String> kafkaTemplate(ProducerFactory<String, String> producerFactory) {
         return new KafkaTemplate<>(producerFactory);
+    }
+
+    private NewTopic buildTopic(String name) {
+        return TopicBuilder
+                .name(name)
+                .replicas(REPLICA_COUNT)
+                .partitions(PARTITION_COUNT)
+                .build();
+    }
+
+    @Bean
+    public NewTopic orchestratorTopic() {
+        return buildTopic(orchestratorTopic);
+    }
+    @Bean
+    public NewTopic productValidationSuccessTopic() {
+        return buildTopic(productValidationSuccessTopic);
+    }
+
+    @Bean
+    public NewTopic productValidationFailTopic() {
+        return buildTopic(productValidationFailTopic);
     }
 }
