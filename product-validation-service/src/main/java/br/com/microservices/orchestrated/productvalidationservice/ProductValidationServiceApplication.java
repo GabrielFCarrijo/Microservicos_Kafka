@@ -10,4 +10,5 @@ public class ProductValidationServiceApplication {
 		SpringApplication.run(ProductValidationServiceApplication.class, args);
 	}
 
+
 }
