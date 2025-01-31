@@ -2,7 +2,6 @@ package br.com.microservices.orchestrated.orderservice.core.producer;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.clients.producer.KafkaProducer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
@@ -22,7 +21,7 @@ public class SagaProducer {
             log.info("Sending event to topic {} with data {}", startSagaTopic, payload);
             kafkaTemplate.send(startSagaTopic, payload);
         } catch (Exception ex) {
-            log.error("Error trying to send data to topic {} with data {}", startSagaTopic);
+            log.error("Error trying to send data to topic {} with data {}", startSagaTopic, payload, ex);
         }
     }
 }

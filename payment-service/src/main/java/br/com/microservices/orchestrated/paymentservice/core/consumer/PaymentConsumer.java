@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class PaymentValidationConsumer {
+public class PaymentConsumer {
 
     private final JsonUtil jsonUtil;
 
