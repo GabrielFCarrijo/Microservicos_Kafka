@@ -15,6 +15,6 @@ public class History {
 
     private String source;
     private String status;
-    private String mensage;
+    private String message;
     private LocalDateTime createdAt;
 }

@@ -1,4 +1,4 @@
-package br.com.microservices.orchestrated.orderservice.config.kafka.exception;
+package br.com.microservices.orchestrated.orderservice.config.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

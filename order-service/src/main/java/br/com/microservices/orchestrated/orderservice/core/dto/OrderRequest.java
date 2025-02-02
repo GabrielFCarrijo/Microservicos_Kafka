@@ -13,5 +13,4 @@ import java.util.List;
 public class OrderRequest {
 
     private List<OrderProducts> products;
-
 }

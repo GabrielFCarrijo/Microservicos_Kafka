@@ -15,15 +15,15 @@ import java.util.List;
 @RequestMapping("/api/event")
 public class EventController {
 
-    private final EventService eventService;
+    private final EventService service;
 
     @GetMapping
     public Event findByFilters(EventFilters filters) {
-        return eventService.findByFilters(filters);
+        return service.findByFilters(filters);
     }
 
-    @GetMapping("/all")
+    @GetMapping("all")
     public List<Event> findAll() {
-        return eventService.findAll();
+        return service.findAll();
     }
 }
