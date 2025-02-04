@@ -39,9 +39,32 @@ public class ProductValidationService {
             handleValidationSuccess(event);
         } catch (Exception e) {
             log.error("Error trying to validate products: ", e);
-            //handleFailureCurrentNotExecuted(event, e.getMessage());
+            handleFailureCurrentNotExecuted(event, e.getMessage());
         }
         producer.sendEvent(jsonUtil.toJson(event));
+    }
+
+    private void handleFailureCurrentNotExecuted(Event event, String message) {
+        event.setStatus(ROLLBACK_PENDING);
+        event.setSource(CURRENT_SOURCE);
+        assHistory(event, "Fail to validate products: ".concat(message));
+    }
+
+    public void rollbackEvent(Event event) {
+        changeValidationToFail(event);
+        event.setStatus(FAIL);
+        event.setSource(CURRENT_SOURCE);
+        assHistory(event, "Rollback executed on product validation!");
+        producer.sendEvent(jsonUtil.toJson(event));
+    }
+
+    private void changeValidationToFail(Event event) {
+        validationRepository
+                .findByOrderIdAndTransactionId(event.getPayload().getId(), event.getTransactionId())
+                .ifPresentOrElse(validation -> {
+                    validation.setSuccess(false);
+                    validationRepository.save(validation);
+                }, () -> createValidation(event, false));
     }
 
     private void validationProductsInformed(Event event) {
@@ -63,18 +86,6 @@ public class ProductValidationService {
         event.getPayload().getProducts().forEach(product -> {
 
         });
-    }
-
-    private void validadeProductInformed(OrderProducts products) {
-        if (ObjectUtils.isEmpty(products.getProduct()) || ObjectUtils.isEmpty(products.getProduct().getCode())) {
-            throw new ValidationException("Product ID and Quantity must be informed");
-        }
-    }
-
-    private void validadeExistingProduct(String code) {
-        if (productRepository.existsByCode(code)) {
-            throw new ValidationException("Product code " + code + " not found");
-        }
     }
 
     private void createValidation(Event event, Boolean succees) {
