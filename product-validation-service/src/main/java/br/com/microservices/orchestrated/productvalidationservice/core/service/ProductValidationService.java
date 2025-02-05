@@ -19,6 +19,7 @@ import org.springframework.util.ObjectUtils;
 import java.time.LocalDateTime;
 
 import static br.com.microservices.orchestrated.productvalidationservice.core.enums.ESagaStatus.*;
+import static org.springframework.util.ObjectUtils.isEmpty;
 
 @Slf4j
 @Service
@@ -68,10 +69,10 @@ public class ProductValidationService {
     }
 
     private void validationProductsInformed(Event event) {
-        if (ObjectUtils.isEmpty(event.getPayload()) || ObjectUtils.isEmpty(event.getPayload().getProducts())) {
+        if (isEmpty(event.getPayload()) || isEmpty(event.getPayload().getProducts())) {
            throw new ValidationException("Payload or products are null.");
         }
-        if (ObjectUtils.isEmpty(event.getPayload().getId()) || ObjectUtils.isEmpty(event.getPayload().getTransactionId())) {
+        if (isEmpty(event.getPayload().getId()) || isEmpty(event.getPayload().getTransactionId())) {
             throw new ValidationException("OrderID and TransactionalID must be informed");
         }
     }
@@ -84,8 +85,21 @@ public class ProductValidationService {
         }
 
         event.getPayload().getProducts().forEach(product -> {
-
+            validateProductInformed(product);
+            validateExistingProduct(product.getProduct().getCode());
         });
+    }
+
+    private void validateProductInformed(OrderProducts product) {
+        if (isEmpty(product.getProduct()) || isEmpty(product.getProduct().getCode())) {
+            throw new ValidationException("Product must be informed!");
+        }
+    }
+
+    private void validateExistingProduct(String code) {
+        if (!productRepository.existsByCode(code)) {
+            throw new ValidationException("Product does not exists in database!");
+        }
     }
 
     private void createValidation(Event event, Boolean succees) {
