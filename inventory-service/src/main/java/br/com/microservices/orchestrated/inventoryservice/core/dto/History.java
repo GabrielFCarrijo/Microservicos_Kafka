@@ -16,6 +16,6 @@ public class History {
 
     private String source;
     private ESagaStatus status;
-    private String mensage;
+    private String message;
     private LocalDateTime createdAt;
 }

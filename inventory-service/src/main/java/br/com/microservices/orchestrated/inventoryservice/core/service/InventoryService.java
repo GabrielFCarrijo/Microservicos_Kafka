@@ -1,8 +1,10 @@
 package br.com.microservices.orchestrated.inventoryservice.core.service;
 
 import br.com.microservices.orchestrated.inventoryservice.config.exception.ValidationException;
-import br.com.microservices.orchestrated.inventoryservice.core.dto.*;
-import br.com.microservices.orchestrated.inventoryservice.core.enums.ESagaStatus;
+import br.com.microservices.orchestrated.inventoryservice.core.dto.Event;
+import br.com.microservices.orchestrated.inventoryservice.core.dto.History;
+import br.com.microservices.orchestrated.inventoryservice.core.dto.Order;
+import br.com.microservices.orchestrated.inventoryservice.core.dto.OrderProducts;
 import br.com.microservices.orchestrated.inventoryservice.core.model.Inventory;
 import br.com.microservices.orchestrated.inventoryservice.core.model.OrderInventory;
 import br.com.microservices.orchestrated.inventoryservice.core.producer.KafkaProducer;
@@ -14,6 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+
+import static br.com.microservices.orchestrated.inventoryservice.core.enums.ESagaStatus.*;
 
 @Slf4j
 @Service
@@ -32,106 +36,111 @@ public class InventoryService {
             checkCurrentValidation(event);
             createOrderInventory(event);
             updateInventory(event.getPayload());
-            handleValidationSuccess(event);
-        } catch (Exception e) {
-            log.error("Error trying to update inventory: ", e);
-            handleFailureCurrentNotExecuted(event, e.getMessage());
+            handleSuccess(event);
+        } catch (Exception ex) {
+            log.error("Error trying to update inventory: ", ex);
+            handleFailCurrentNotExecuted(event, ex.getMessage());
         }
         producer.sendEvent(jsonUtil.toJson(event));
+    }
+
+    private void checkCurrentValidation(Event event) {
+        if (orderInventoryRepository.existsByOrderIdAndTransactionId(
+            event.getPayload().getId(), event.getTransactionId())) {
+            throw new ValidationException("There's another transactionId for this validation.");
+        }
+    }
+
+    private void createOrderInventory(Event event) {
+        event
+            .getPayload()
+            .getProducts()
+            .forEach(product -> {
+                var inventory = findInventoryByProductCode(product.getProduct().getCode());
+                var orderInventory = createOrderInventory(event, product, inventory);
+                orderInventoryRepository.save(orderInventory);
+            });
+    }
+
+    private OrderInventory createOrderInventory(Event event,
+                                                OrderProducts product,
+                                                Inventory inventory) {
+        return OrderInventory
+            .builder()
+            .inventory(inventory)
+            .oldQuantity(inventory.getAvailable())
+            .orderQuantity(product.getQuantity())
+            .newQuantity(inventory.getAvailable() - product.getQuantity())
+            .orderId(event.getPayload().getId())
+            .transactionId(event.getTransactionId())
+            .build();
     }
 
     private void updateInventory(Order order) {
         order.getProducts().forEach(product -> {
-            var inventory = findInventoryByProductCode(product.getProduct().getCode());
-            checkInventory(inventory.getAvaliable(), product.getQuantity());
-            inventory.setAvaliable(inventory.getAvaliable() - product.getQuantity());
+           var inventory = findInventoryByProductCode(product.getProduct().getCode());
+            checkInventory(inventory.getAvailable(), product.getQuantity());
+            inventory.setAvailable(inventory.getAvailable() - product.getQuantity());
             inventoryRepository.save(inventory);
         });
     }
 
-    private void checkInventory(int avalable, int orderQuantity) {
-        if (orderQuantity > avalable) {
-            throw new ValidationException("Insufficient inventory to complete the order");
+    private void checkInventory(int available, int orderQuantity) {
+        if (orderQuantity > available) {
+            throw new ValidationException("Product is out of stock!");
         }
     }
 
-    private void handleValidationSuccess(Event event) {
-        event.setStatus(ESagaStatus.SUCCESS);
+    private void handleSuccess(Event event) {
+        event.setStatus(SUCCESS);
         event.setSource(CURRENT_SOURCE);
-        assHistory(event, "Inventory realized successfully");
+        addHistory(event, "Inventory updated successfully!");
     }
 
-    private void assHistory(Event event, String message) {
-        var history = History.builder()
-                .source(event.getSource())
-                .status(event.getStatus())
-                .mensage(message)
-                .createdAt(LocalDateTime.now())
-                .build();
-
+    private void addHistory(Event event, String message) {
+        var history = History
+            .builder()
+            .source(event.getSource())
+            .status(event.getStatus())
+            .message(message)
+            .createdAt(LocalDateTime.now())
+            .build();
         event.addToHistory(history);
     }
 
-    private void createOrderInventory(Event event) {
-        event.getPayload().getProducts().forEach(products -> {
-         var inventory = findInventoryByProductCode(products.getProduct().getCode());
-         var orderInventory = createOrderInventory(event, products, inventory);
-         orderInventoryRepository.save(orderInventory);
-        });
-    }
-
-    private OrderInventory createOrderInventory(Event event, OrderProducts orderProducts, Inventory inventory) {
-        return OrderInventory.builder()
-                .inventory(inventory)
-                .oldQuantity(inventory.getAvaliable())
-                .orderQuantity(orderProducts.getQuantity())
-                .newQuantity(inventory.getAvaliable() - orderProducts.getQuantity())
-                .orderId(event.getPayload().getId())
-                .transactionId(event.getTransactionId())
-                .build();
-    }
-
-    private Inventory findInventoryByProductCode(String productCode) {
-        return orderInventoryRepository.findByProductCode(productCode).orElseThrow(() ->
-                new ValidationException("Inventory not found for product code " + productCode));
-    }
-
-    private void checkCurrentValidation(Event event) {
-        if (inventoryRepository.existsByOrderIdAndTransactionId(
-                event.getOrderId(), event.getTransactionId())) {
-            throw new ValidationException("Validation already executed for order " + event.getOrderId());
-        }
+    private void handleFailCurrentNotExecuted(Event event, String message) {
+        event.setStatus(ROLLBACK_PENDING);
+        event.setSource(CURRENT_SOURCE);
+        addHistory(event, "Fail to update inventory: ".concat(message));
     }
 
     public void rollbackInventory(Event event) {
-        event.setStatus(ESagaStatus.FAIL);
+        event.setStatus(FAIL);
         event.setSource(CURRENT_SOURCE);
         try {
-            returnInventoryProviousValues(event);
-            assHistory(event, "Rollback executed for inventory!");
-        } catch (Exception e) {
-            assHistory(event, "Rollback not executed for inventory!".concat(e.getMessage()));
+            returnInventoryToPreviousValues(event);
+            addHistory(event, "Rollback executed for inventory!");
+        } catch (Exception ex) {
+            addHistory(event, "Rollback not executed for inventory: ".concat(ex.getMessage()));
         }
         producer.sendEvent(jsonUtil.toJson(event));
     }
 
-    private void returnInventoryProviousValues(Event event) {
-        orderInventoryRepository.findByOrderIdAndTransactionId(event.getPayload().getId(), event.getTransactionId())
-                .forEach(orderInventory -> {
-                    var inventory = orderInventory.getInventory();
-                    inventory.setAvaliable(orderInventory.getOldQuantity());
-                    inventoryRepository.save(inventory);
-                    log.info("Restored inventory for order {} from {} to {}",
-                            event.getPayload().getId(), orderInventory.getNewQuantity(), inventory.getAvaliable()
-                    );
-                });
-
+    private void returnInventoryToPreviousValues(Event event) {
+        orderInventoryRepository
+            .findByOrderIdAndTransactionId(event.getPayload().getId(), event.getTransactionId())
+            .forEach(orderInventory -> {
+                var inventory = orderInventory.getInventory();
+                inventory.setAvailable(orderInventory.getOldQuantity());
+                inventoryRepository.save(inventory);
+                log.info("Restored inventory for order {}: from {} to {}",
+                    event.getPayload().getId(), orderInventory.getNewQuantity(), inventory.getAvailable());
+            });
     }
 
-    private void handleFailureCurrentNotExecuted(Event event, String message) {
-        event.setStatus(ESagaStatus.ROLLBACK_PENDING);
-        event.setSource(CURRENT_SOURCE);
-        assHistory(event, "Fail to update inventory: ".concat(message));
+    private Inventory findInventoryByProductCode(String productCode) {
+        return inventoryRepository
+            .findByProductCode(productCode)
+            .orElseThrow(() -> new ValidationException("Inventory not found by informed product."));
     }
-
 }

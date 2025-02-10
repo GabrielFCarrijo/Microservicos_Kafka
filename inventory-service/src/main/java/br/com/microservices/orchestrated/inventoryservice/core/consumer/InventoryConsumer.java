@@ -12,12 +12,12 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class InventoryConsumer {
 
-    private final JsonUtil jsonUtil;
     private final InventoryService inventoryService;
+    private final JsonUtil jsonUtil;
 
     @KafkaListener(
-            groupId = "${spring.kafka.consumer.group-id}",
-            topics = "${spring.kafka.topic.inventory-success}"
+        groupId = "${spring.kafka.consumer.group-id}",
+        topics = "${spring.kafka.topic.inventory-success}"
     )
     public void consumeSuccessEvent(String payload) {
         log.info("Receiving success event {} from inventory-success topic", payload);
@@ -26,8 +26,8 @@ public class InventoryConsumer {
     }
 
     @KafkaListener(
-            groupId = "${spring.kafka.consumer.group-id}",
-            topics = "${spring.kafka.topic.inventory-fail}"
+        groupId = "${spring.kafka.consumer.group-id}",
+        topics = "${spring.kafka.topic.inventory-fail}"
     )
     public void consumeFailEvent(String payload) {
         log.info("Receiving rollback event {} from inventory-fail topic", payload);
